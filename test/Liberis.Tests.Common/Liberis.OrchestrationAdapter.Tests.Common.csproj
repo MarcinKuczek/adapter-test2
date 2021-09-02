@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <LangVersion>8.0</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Liberis.OrchestrationAdapter.Application\Liberis.OrchestrationAdapter.Application.csproj" />
+    <ProjectReference Include="..\..\src\Liberis.OrchestrationAdapter.Core\Liberis.OrchestrationAdapter.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Liberis.Core.Common" Version="1.0.0-rc.17649" />
+    <PackageReference Include="Liberis.Core.Models" Version="1.9.30" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="3.1.9" />
+    <PackageReference Include="NSubstitute" Version="4.2.2" />
+  </ItemGroup>
+
+</Project>

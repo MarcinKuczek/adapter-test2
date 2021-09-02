@@ -1,0 +1,115 @@
+pool:
+  vmImage: 'ubuntu-latest'
+
+trigger:
+  - master
+  - feature/*
+  - refs/tags/*
+
+pr:
+  branches:
+    include:
+      - feature/*
+    exclude:
+      - master
+
+variables:
+  devRegistryServerName: '$(devRegistry).azurecr.io'
+  prodRegistryServerName: '$(prodRegistry).azurecr.io'
+  imageName: '$(projectName)'
+
+steps:
+  - task: UseDotNet@2
+    displayName: 'Install Dot Net Core 3.1.x SDK'
+    inputs:
+      packageType: 'sdk'
+      version: '3.1.x'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Restore Packages'
+    inputs:
+      command: restore
+      projects: '**/*.csproj'
+      vstsFeed: 'e0e596f1-dcc7-4014-882c-9f5a6e39db35'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Build Projects'
+    inputs:
+      command: build
+      projects: '**/*.csproj'
+      arguments: '--configuration Release'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Run Tests'
+    inputs:
+      command: test
+      projects: '**/*Tests/*.csproj'
+      arguments: '--configuration Release'
+
+  - task: DotNetCoreCLI@2
+    displayName: 'Publish Web Projects'
+    inputs:
+      command: publish
+      publishWebProjects: True
+      arguments: '--configuration Release --output $(Build.ArtifactStagingDirectory)'
+      zipAfterPublish: false
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/master'), startsWith(variables['Build.SourceBranch'], 'refs/tags/')))
+  
+  - task: Bash@3
+    displayName: 'Print contents of working directory'
+    inputs:
+      targetType: 'inline'
+      script: |
+        echo 'Current working directory:'
+        pwd
+        echo 'Contents of working directory:'
+        ls -lR
+      workingDirectory: '$(Build.ArtifactStagingDirectory)'
+
+  - bash: docker build -f $(Build.ArtifactStagingDirectory)/$(projectDotName)/Dockerfile -t $(devRegistryServerName)/$(imageName):$(build.buildId) -t $(devRegistryServerName)/$(imageName):latest -t $(prodRegistryServerName)/$(imageName):$(build.buildId) -t $(prodRegistryServerName)/$(imageName):latest $(Build.ArtifactStagingDirectory)/$(projectDotName)
+    displayName: 'docker build'
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/master'), startsWith(variables['Build.SourceBranch'], 'refs/tags/')))
+
+  - bash: docker login $(devRegistryServerName) -u $(devRegistryUsername) -p $(devRegistryPassword)
+    displayName: 'docker dev login'
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+
+  - bash: |
+      docker push $(devRegistryServerName)/$(imageName):$(build.buildId)
+      docker push $(devRegistryServerName)/$(imageName):latest
+    displayName: 'docker push dev'
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+        
+  - bash: docker login $(prodRegistryServerName) -u $(prodRegistryUsername) -p $(prodRegistryPassword)
+    displayName: 'docker prod login'
+    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/'))
+
+  - bash: |
+      docker push $(prodRegistryServerName)/$(imageName):$(build.buildId)
+      docker push $(prodRegistryServerName)/$(imageName):latest
+    displayName: 'docker push prod'
+    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/'))
+
+  - task: HelmInstaller@1
+    displayName: 'Install Helm (latest)'
+    inputs:
+      helmVersionToInstall: 'latest'
+
+  - bash: helm package --version $(build.buildId) --destination $(build.artifactStagingDirectory) $(system.defaultWorkingDirectory)/src/charts/$(projectName)
+    displayName: 'helm package'
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/master'), startsWith(variables['Build.SourceBranch'], 'refs/tags/')))
+
+  - bash: az acr helm push -n $(devRegistry) -u $(devRegistryUsername) -p $(devRegistryPassword) $(build.artifactStagingDirectory)/$(projectName)-$(build.buildId).tgz
+    displayName: 'az acr helm push dev'
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+
+  - bash: az acr helm push -n $(prodRegistry) -u $(prodRegistryUsername) -p $(prodRegistryPassword) $(build.artifactStagingDirectory)/$(projectName)-$(build.buildId).tgz
+    displayName: 'az acr helm push prod'
+    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/'))
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+      ArtifactName: 'develop'
+      publishLocation: 'Container'
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/master'), startsWith(variables['Build.SourceBranch'], 'refs/tags/')))

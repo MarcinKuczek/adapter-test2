@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Liberis.OrchestrationAdapter.Tests.Common": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
